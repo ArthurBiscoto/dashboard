@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cia Verde | HR Analytics - V3</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;800&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --verde-clt: #004d4d;      
+            --verde-pj: #26c2c2;       
+            --vermelho-saida: #494646;    /* Alterado para Vermelho */
+            --verde-entrada: #008080;  
+            --laranja-afastado: #004d4d; 
+            --roxo-suspenso: #004d4d; 
+            --bg-body: #f1f5f5;
+            --text-main: #1f8fa3;
+            --shadow: 0 4px 20px rgba(0, 51, 51, 0.1);
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--bg-body);
+            margin: 0;
+            color: var(--text-main);
+        }
+
+        header {
+            background: white;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: var(--shadow);
+        }
+
+        .filters { display: flex; gap: 10px; background: #e0eaea; padding: 6px; border-radius: 12px; }
+        select { padding: 8px 12px; border-radius: 8px; border: none; font-weight: 700; color: var(--verde-clt); cursor: pointer; background: white; }
+
+        .main-content { max-width: 1450px; margin: 1.5rem auto; padding: 0 1.5rem; }
+
+        .stats-container {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stats-grid-top {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1.2rem;
+        }
+
+        .card {
+            background: white;
+            padding: 1.2rem;
+            border-radius: 16px;
+            box-shadow: var(--shadow);
+            border-bottom: 5px solid var(--verde-clt);
+            text-align: center;
+        }
+
+        .card.afastado { border-bottom-color: var(--laranja-afastado); }
+        .card.suspenso { border-bottom-color: var(--roxo-suspenso); }
+        .card.total-geral { border-bottom-color: var(--verde-pj); max-width: 400px; margin: 0 auto; }
+
+        .card .title { font-size: 0.7rem; font-weight: 800; color: #56615c; text-transform: uppercase; margin-bottom: 5px; }
+        .card .number { font-size: 1.8rem; font-weight: 800; color: var(--verde-clt); }
+
+        .charts-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5rem; }
+        .chart-box { background: white; padding: 1.5rem; border-radius: 16px; box-shadow: var(--shadow); height: 380px; }
+        h3 { font-size: 1rem; margin-top: 0; color: var(--verde-clt); border-left: 4px solid var(--vermelho-saida); padding-left: 12px; }
+
+        @media (max-width: 1100px) { .charts-row { grid-template-columns: 1fr; } }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <img src="static/logo-ciaverde.png" alt="Cia Verde" style="height: 40px;">
+        <div class="filters">
+            <select id="mes">
+                <option value="01">Janeiro</option><option value="02">Fevereiro</option>
+                <option value="03">Março</option><option value="04" selected>Abril</option>
+                <option value="05">Maio</option><option value="06">Junho</option>
+                <option value="07">Julho</option><option value="08">Agosto</option>
+                <option value="09">Setembro</option><option value="10">Outubro</option>
+                <option value="11">Novembro</option><option value="12">Dezembro</option>
+            </select>
+            <select id="ano">
+                <option value="2025">2025</option>
+                <option value="2026" selected>2026</option>
+            </select>
+        </div>
+    </header>
+
+    <main class="main-content">
+        <div class="stats-container">
+            <div class="stats-grid-top">
+                <div class="card"><div class="title">Total Ativos</div><div id="tAtivos" class="number">0</div></div>
+                <div class="card afastado"><div class="title">Afastados</div><div id="tAfastados" class="number" style="color: var(--laranja-afastado);">0</div></div>
+                <div class="card suspenso"><div class="title">Contrato Suspenso</div><div id="tSuspensos" class="number" style="color: var(--roxo-suspenso);">0</div></div>
+                <div class="card"><div class="title">Turnover ADM / OPE</div><div id="tAdm" class="number">0%</div></div>
+                <div class="card"><div class="title">Turnover Motorista</div><div id="tMot" class="number">0%</div></div>
+            </div>
+            
+            <div class="card total-geral">
+                <div class="title">Turnover Total</div>
+                <div id="tGeral" class="number">0.00%</div>
+            </div>
+        </div>
+
+        <div class="charts-row">
+            <div class="chart-box">
+                <h3>Entradas: CLT vs PJ</h3>
+                <canvas id="chartEntradasTipo"></canvas>
+            </div>
+            <div class="chart-box">
+                <h3>Movimento por Setor</h3>
+                <canvas id="chartSetores"></canvas>
+            </div>
+            <div class="chart-box">
+                <h3>Demissões: CLT vs PJ</h3>
+                <canvas id="chartSaidasTipo"></canvas>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        let charts = {};
+
+        document.getElementById('mes').addEventListener('change', carregar);
+        document.getElementById('ano').addEventListener('change', carregar);
+
+        async function carregar() {
+            const mesF = document.getElementById("mes").value;
+            const anoF = document.getElementById("ano").value;
+            const url = "https://docs.google.com/spreadsheets/d/15Mw0ATxb28nq1tzIjSeWlWpSsHBzdQKb/export?format=csv";
+
+            try {
+                const res = await fetch(url);
+                const csv = await res.text();
+                const linhas = csv.split(/\r?\n/).slice(1);
+
+                let d = {
+                    ativos: { total: 0, adm: 0, mot: 0 },
+                    afastadosCount: 0,
+                    suspensosCount: 0,
+                    mov: { 
+                        adm: { e: 0, s: 0, af: 0, su: 0 }, 
+                        mot: { e: 0, s: 0, af: 0, su: 0 } 
+                    },
+                    entTipo: { clt: 0, pj: 0 },
+                    saiTipo: { clt: 0, pj: 0 }
+                };
+
+                linhas.forEach(linha => {
+                    const col = linha.split(",").map(c => c.replace(/"/g, '').trim());
+                    if (col.length < 11) return;
+
+                    let setorOriginal = col.find(c => c === "ADM / OPE" || c === "FROTA MOTORISTA") || "";
+                    const contrato = col[8] ? col[8].toUpperCase() : "";
+                    const admissao = col[9] || "";
+                    const status = col[10] ? col[10].toUpperCase() : "";
+                    const desligamento = col[11] || "";
+
+                    const isMot = setorOriginal === "FROTA MOTORISTA";
+                    
+                    if (status.includes("ATIVO")) {
+                        d.ativos.total++;
+                        if (isMot) d.ativos.mot++; else d.ativos.adm++;
+                    }
+
+                    if (status.includes("AFASTADO")) {
+                        d.afastadosCount++;
+                        if (isMot) d.mov.mot.af++; else d.mov.adm.af++;
+                    } else if (status.includes("SUSPENSO")) {
+                        d.suspensosCount++;
+                        if (isMot) d.mov.mot.su++; else d.mov.adm.su++;
+                    }
+
+                    if (admissao.includes("/")) {
+                        const [dia, mes, ano] = admissao.split("/");
+                        if (mes === mesF && ano === anoF) {
+                            if (isMot) d.mov.mot.e++; else d.mov.adm.e++;
+                            if (contrato.includes("PJ")) d.entTipo.pj++; else d.entTipo.clt++;
+                        }
+                    }
+
+                    if (desligamento.includes("/") && !status.includes("AFASTADO") && !status.includes("SUSPENSO")) {
+                        const [ds, ms, as] = desligamento.split("/");
+                        if (ms === mesF && as === anoF) {
+                            if (isMot) d.mov.mot.s++; else d.mov.adm.s++;
+                            if (contrato.includes("PJ")) d.saiTipo.pj++; else d.saiTipo.clt++;
+                        }
+                    }
+                });
+
+                atualizarDados(d);
+            } catch (e) { console.error(e); }
+        }
+
+        function atualizarDados(d) {
+            const calc = (e, s, a) => a > 0 ? (((e + s) / 2) / a) * 100 : 0;
+
+            const tAdm = calc(d.mov.adm.e, d.mov.adm.s, d.ativos.adm);
+            const tMot = calc(d.mov.mot.e, d.mov.mot.s, d.ativos.mot);
+            const tGeral = calc((d.mov.adm.e + d.mov.mot.e), (d.mov.adm.s + d.mov.mot.s), d.ativos.total);
+
+            document.getElementById("tAtivos").innerText = d.ativos.total;
+            document.getElementById("tAfastados").innerText = d.afastadosCount;
+            document.getElementById("tSuspensos").innerText = d.suspensosCount;
+            document.getElementById("tAdm").innerText = tAdm.toFixed(2) + "%";
+            document.getElementById("tMot").innerText = tMot.toFixed(2) + "%";
+            document.getElementById("tGeral").innerText = tGeral.toFixed(2) + "%";
+
+            renderPie('chartEntradasTipo', ['CLT', 'PJ'], [d.entTipo.clt, d.entTipo.pj], [ '#004d4d', '#26c2c2']);
+            // ALTERADO PARA VERMELHO NO GRÁFICO DE DEMISSÕES
+            renderPie('chartSaidasTipo', ['CLT', 'PJ'], [d.saiTipo.clt, d.saiTipo.pj], [ '#c0392b', '#e74c3c']); 
+            
+            renderBar('chartSetores', d.mov);
+        }
+
+        function renderPie(id, labels, data, colors) {
+            if(charts[id]) charts[id].destroy();
+            charts[id] = new Chart(document.getElementById(id), {
+                type: 'doughnut',
+                data: { 
+                    labels: labels, 
+                    datasets: [{ data: data, backgroundColor: colors, borderWidth: 3, borderColor: '#ffffff' }] 
+                },
+                options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, cutout: '65%' }
+            });
+        }
+
+        function renderBar(id, mov) {
+            if(charts[id]) charts[id].destroy();
+            charts[id] = new Chart(document.getElementById(id), {
+                type: 'bar',
+                data: {
+                    labels: ['ADM / OPE', 'MOTORISTA'],
+                    datasets: [
+                        { label: 'Entradas', data: [mov.adm.e, mov.mot.e], backgroundColor: '#008080' },
+                        // ALTERADO PARA VERMELHO NO GRÁFICO DE BARRAS
+                        { label: 'Saídas', data: [mov.adm.s, mov.mot.s], backgroundColor: '#e74c3c' },
+                        { label: 'Afastados', data: [mov.adm.af, mov.mot.af], backgroundColor: '#103857' },
+                        { label: 'Suspensos', data: [mov.adm.su, mov.mot.su], backgroundColor: '#0b2b75' }
+                    ]
+                },
+                options: { 
+                    maintainAspectRatio: false, 
+                    scales: { y: { beginAtZero: true } } 
+                }
+            });
+        }
+
+        carregar();
+    </script>
+</body>
+</html>
